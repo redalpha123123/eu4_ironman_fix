@@ -8,7 +8,8 @@ using namespace blackbone;
 Process proc;
 
 #pragma pack(push, 1)
-struct AchievementsManager {
+// 48 89 2D ? ? ? ? 48 8B 1D ? ? ? ? 48 89 2D
+struct CAchievementsManager {
   bool _bMultiplayer;
   bool _bSaveGameOK;
   bool _bGameOK;
@@ -61,14 +62,20 @@ int main() {
 
   proc.Attach(eu4_process_id, PROCESS_ALL_ACCESS);
 
+  if (proc.core().isWow64()) {
+    printf("Not compatible EU4 version detected! Consider updating and re-run tool.\n");
+    proc.Detach();
+    return STATUS_UNSUCCESSFUL;
+  }
+
   const auto main_module = proc.modules().GetMainModule();
   const auto base = main_module->baseAddress;
 
   if (const auto g_AchievementsManager = GetAchievementsManager()) {
-    proc.memory().Write<byte>(g_AchievementsManager + offsetof(AchievementsManager, _bGameOK), true);
-    proc.memory().Write<byte>(g_AchievementsManager + offsetof(AchievementsManager, _bIsDebug), true);
-    proc.memory().Write<byte>(g_AchievementsManager + offsetof(AchievementsManager, _bSaveGameOK), true);
-    proc.memory().Write<byte>(g_AchievementsManager + offsetof(AchievementsManager, _bMultiplayer), false);
+    proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bMultiplayer), false);
+    proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bSaveGameOK), true);
+    proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bGameOK), true);
+    proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bIsDebug), true);
   }
 
   if (const auto g_ConsoleCmdManager = GetConsoleCmdManager()) {
@@ -76,6 +83,18 @@ int main() {
     proc.memory().Write<byte>(g_ConsoleCmdManager + offsetof(CConsoleCmdManager, _isRelease), false);
   }
 
+  printf("\n");
+  printf("\n");
+  printf("Successfully patched game!\n");
+  printf("If you encounter any issues please report at:\n");
+  printf("https://github.com/macho105/eu4_ironman_fix/issues\n");
+  printf("\n");
+  printf("If tool doesn't seem to work, please re-run it and check again!\n");
+  printf("Some game versions might require to run tool after loading save or starting new game.\n");
+  printf("\n");
+  printf("\n");
+
+  proc.Detach();
   system("pause");
   return 0;
 }
