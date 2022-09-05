@@ -30,7 +30,7 @@ uintptr_t GetAchievementsManager() {
   std::vector<ptr_t> out;
   if (ps.SearchRemote(proc, 0xCC, proc.modules().GetMainModule()->baseAddress, proc.modules().GetMainModule()->size, out)) {
     const auto g_AchievementsManager = out.front() + 7 + proc.memory().Read<DWORD>(out.front() + 3).result();
-    printf("g_AchievementsManager: 0x%p [ %p ]\n", reinterpret_cast<void*>(g_AchievementsManager), reinterpret_cast<void*>(g_AchievementsManager - proc.modules().GetMainModule()->baseAddress));
+    printf("[+] g_AchievementsManager: 0x%p [ %p ]\n", reinterpret_cast<void *>(g_AchievementsManager), reinterpret_cast<void *>(g_AchievementsManager - proc.modules().GetMainModule()->baseAddress));
     return proc.memory().Read<uintptr_t>(g_AchievementsManager).result();
   }
   return 0;
@@ -41,10 +41,30 @@ uintptr_t GetConsoleCmdManager() {
   std::vector<ptr_t> out;
   if (ps.SearchRemote(proc, 0xCC, proc.modules().GetMainModule()->baseAddress, proc.modules().GetMainModule()->size, out)) {
     const auto g_ConsoleCmdManager = out.front() + 7 + proc.memory().Read<DWORD>(out.front() + 3).result();
-    printf("g_ConsoleCmdManager: 0x%p [ %p ]\n", reinterpret_cast<void*>(g_ConsoleCmdManager), reinterpret_cast<void*>(g_ConsoleCmdManager - proc.modules().GetMainModule()->baseAddress));
+    printf("[+] g_ConsoleCmdManager: 0x%p [ %p ]\n", reinterpret_cast<void *>(g_ConsoleCmdManager), reinterpret_cast<void *>(g_ConsoleCmdManager - proc.modules().GetMainModule()->baseAddress));
     return proc.memory().Read<uintptr_t>(g_ConsoleCmdManager).result();
   }
   return 0;
+}
+
+uintptr_t GetIsGameOKPatchAddress() {
+  const PatternSearch ps{0x0F, 0x94, 0xC3, 0xE8, 0xCC, 0xCC, 0xCC, 0xCC, 0x48, 0x8B, 0xC8, 0x0F, 0xB6, 0xD3, 0xE8, 0xCC, 0xCC, 0xCC, 0xCC, 0x0F, 0x57, 0xC0};
+  std::vector<ptr_t> out;
+  if (ps.SearchRemote(proc, 0xCC, proc.modules().GetMainModule()->baseAddress, proc.modules().GetMainModule()->size, out)) {
+    const auto isGameOk = out.front();
+    printf("[+] IsGameOK Patch address: 0x%p [ %p ]\n", reinterpret_cast<void *>(isGameOk), reinterpret_cast<void *>(isGameOk - proc.modules().GetMainModule()->baseAddress));
+    return isGameOk;
+  }
+  return 0;
+}
+
+bool IsIsGameOkAlreadyPatched() {
+  const PatternSearch ps{0xB3, 0x01, 0x90, 0xE8, 0xCC, 0xCC, 0xCC, 0xCC, 0x48, 0x8B, 0xC8, 0x0F, 0xB6, 0xD3, 0xE8, 0xCC, 0xCC, 0xCC, 0xCC, 0x0F, 0x57, 0xC0};
+  std::vector<ptr_t> out;
+  if (ps.SearchRemote(proc, 0xCC, proc.modules().GetMainModule()->baseAddress, proc.modules().GetMainModule()->size, out)) {
+    return true;
+  }
+  return false;
 }
 
 int main() {
@@ -70,29 +90,65 @@ int main() {
 
   const auto main_module = proc.modules().GetMainModule();
   const auto base = main_module->baseAddress;
+  bool status = true;
 
   if (const auto g_AchievementsManager = GetAchievementsManager()) {
     proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bMultiplayer), false);
     proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bSaveGameOK), true);
     proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bGameOK), true);
     proc.memory().Write<byte>(g_AchievementsManager + offsetof(CAchievementsManager, _bIsDebug), true);
+    printf("[+] Patched AchievementsManager!\n");
+  } else {
+    printf("[!] AchievementsManager failed!\n");
+    status = false;
   }
 
   if (const auto g_ConsoleCmdManager = GetConsoleCmdManager()) {
     proc.memory().Write<byte>(g_ConsoleCmdManager + offsetof(CConsoleCmdManager, _bIsMultiplayer), false);
     proc.memory().Write<byte>(g_ConsoleCmdManager + offsetof(CConsoleCmdManager, _isRelease), false);
+    printf("[+] Patched ConsoleCMDManager!\n");
+  } else {
+    printf("[!] ConsoleCmdManager failed!\n");
+    status = false;
   }
 
-  printf("\n");
-  printf("\n");
-  printf("Successfully patched game!\n");
-  printf("If you encounter any issues please report at:\n");
-  printf("https://github.com/macho105/eu4_ironman_fix/issues\n");
-  printf("\n");
-  printf("If tool doesn't seem to work, please re-run it and check again!\n");
-  printf("Some game versions might require to run tool after loading save or starting new game.\n");
-  printf("\n");
-  printf("\n");
+  if (IsIsGameOkAlreadyPatched()) {
+    printf("[+] IsGameOK is already patched..\n");
+  } else {
+    if (const auto isGameOKPatchAddress = GetIsGameOKPatchAddress()) {
+      // Original code:
+      // 0F 94 C3   setz    bl
+      //
+      // Patched to:
+      // b3 01      mov    bl, 0x1
+      // 90         nop
+      //
+
+      constexpr byte patch[3] = {0xB3, 0x01, 0x90};
+      proc.memory().Write(isGameOKPatchAddress, sizeof(patch), &patch);
+    } else {
+      printf("[!] IsGameOKPatch failed!\n");
+      status = false;
+    }
+  }
+
+
+  if (status) {
+    printf("\n"
+        "\n"
+        "Successfully patched game!\n"
+        "If you encounter any issues please report at:\n"
+        "https://github.com/macho105/eu4_ironman_fix/issues\n"
+        "\n"
+        "If tool doesn't seem to work, please re-run it and check again!\n"
+        "Some game versions might require to run tool after loading save or starting new game.\n"
+        "\n"
+        "\n");
+  } else {
+    printf("Some Signatures Failed!\n"
+        "Please report https://github.com/macho105/eu4_ironman_fix/issues\n"
+        "This happened because game has updated or you ran tool too early. Wait for main menu!\n");
+  }
 
   proc.Detach();
   system("pause");
