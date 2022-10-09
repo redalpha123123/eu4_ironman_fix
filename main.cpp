@@ -25,16 +25,6 @@ struct CConsoleCmdManager {
 };
 #pragma pop
 
-uintptr_t GetAchievementsManager() {
-  const PatternSearch ps{0x48, 0x89, 0x2D, 0xCC, 0xCC, 0xCC, 0xCC, 0x48, 0x8B, 0x1D, 0xCC, 0xCC, 0xCC, 0xCC, 0x48, 0x89, 0x2D};
-  std::vector<ptr_t> out;
-  if (ps.SearchRemote(proc, 0xCC, proc.modules().GetMainModule()->baseAddress, proc.modules().GetMainModule()->size, out)) {
-    const auto g_AchievementsManager = out.front() + 7 + proc.memory().Read<DWORD>(out.front() + 3).result();
-    printf("[+] g_AchievementsManager: 0x%p [ %p ]\n", reinterpret_cast<void *>(g_AchievementsManager), reinterpret_cast<void *>(g_AchievementsManager - proc.modules().GetMainModule()->baseAddress));
-    return proc.memory().Read<uintptr_t>(g_AchievementsManager).result();
-  }
-  return 0;
-}
 
 uintptr_t GetConsoleCmdManager() {
   const PatternSearch ps{0x48, 0x89, 0x3D, 0xCC, 0xCC, 0xCC, 0xCC, 0x88, 0x5F, 0x19};
